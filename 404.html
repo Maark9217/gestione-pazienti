@@ -4,8 +4,9 @@
     <meta charset="utf-8">
     <title>Reindirizzamento...</title>
     <script>
-        const segment = location.pathname.split('/').pop();
-        location.href = '/gestione-pazienti/' + (segment || '');
+        const basePath = '/gestione-pazienti';
+        const path = window.location.pathname.replace(basePath, '');
+        window.location.href = `${basePath}/${path}`;
     </script>
 </head>
 <body>
