@@ -1,5 +1,9 @@
 import { supabase } from './config.js'
 
+const BASE_URL = window.location.hostname === 'localhost' 
+    ? '/' 
+    : '/gestione-pazienti/';
+
 document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     
@@ -15,8 +19,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         if (error) throw error
         
         if (data.user) {
-            // Redirect to main app using the base URL
-            window.location.href = window.location.origin + '/gestione-pazienti/index.html';
+            window.location.href = BASE_URL + 'index.html';
         }
     } catch (error) {
         alert('Errore di login: ' + error.message)
