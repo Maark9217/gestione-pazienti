@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Studio Posturologia - Gestione Pazienti</title>
     <script type="module">
-        import { getPath } from '/js/paths.js';
+        import { getPath } from './js/paths.js';  // Percorso relativo
         if (!sessionStorage.getItem('authenticated')) {
             window.location.href = getPath('login.html');
         }
