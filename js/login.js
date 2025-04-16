@@ -14,7 +14,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         
         if (error) throw error
         
-        window.location.href = 'index.html'
+        if (data.user) {
+            // Redirect to main app using the base URL
+            window.location.href = window.location.origin + '/gestione-pazienti/index.html';
+        }
     } catch (error) {
         alert('Errore di login: ' + error.message)
     }
