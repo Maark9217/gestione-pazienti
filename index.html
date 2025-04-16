@@ -14,9 +14,8 @@
     <link rel="stylesheet" href="/gestione-pazienti/css/patients.css">
     <link rel="stylesheet" href="/gestione-pazienti/css/notification-bell.css">
     <script>
-        const baseUrl = window.location.hostname === 'localhost' 
-            ? '/' 
-            : '/gestione-pazienti/';
+        const isGitHub = window.location.hostname.includes('github.io');
+        const baseUrl = isGitHub ? '/gestione-pazienti/' : '/';
         window.location.href = baseUrl + 'login.html';
     </script>
 </head>
