@@ -1,6 +1,12 @@
-const isGitHubPages = window.location.hostname.includes('github.io');
-const BASE_PATH = isGitHubPages ? '/gestione-pazienti' : '';
-
 export function getPath(path) {
-    return `${BASE_PATH}/${path}`.replace('//', '/');
+    // Rimuovi eventuali slash iniziali
+    path = path.replace(/^\//, '');
+    
+    // Se siamo su GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+        return `/gestione-pazienti/${path}`;
+    }
+    
+    // In ambiente locale
+    return `/${path}`;
 }
