@@ -20,3 +20,18 @@ Sistema di gestione pazienti e appuntamenti per studio medico.
 1. Clonare il repository
 2. Configurare le variabili ambiente in `js/db-config.js`
 3. Deployare su hosting statico
+
+## Deployment
+1. Assicurarsi di essere nella directory del progetto
+2. Eseguire i seguenti comandi:
+   ```bash
+   git add .
+   git commit -m "Update: [descrizione modifiche]"
+   git push origin main
+   ```
+3. Il sito sarà disponibile su GitHub Pages dopo alcuni minuti
+
+## Note di sviluppo
+- Utilizzare paths relativi per le risorse
+- Testare su dispositivi mobili
+- Mantenere la compatibilità cross-browser
