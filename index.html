@@ -2,22 +2,34 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <base href="/gestione-pazienti/">
     <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#3498db">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Studio Posturologia - Gestione Pazienti</title>
-    <link rel="stylesheet" href="/gestione-pazienti/css/style.css">
-    <link rel="stylesheet" href="/gestione-pazienti/css/calendar.css">
-    <link rel="stylesheet" href="/gestione-pazienti/css/patients.css">
-    <link rel="stylesheet" href="/gestione-pazienti/css/notification-bell.css">
-    <script>
-        const isGitHub = window.location.hostname.includes('github.io');
-        const baseUrl = isGitHub ? '/gestione-pazienti/' : '/';
-        window.location.href = baseUrl + 'login.html';
+    <script type="module">
+        import { getPath } from '/js/paths.js';
+        if (!sessionStorage.getItem('authenticated')) {
+            window.location.href = getPath('login.html');
+        }
+
+        // Carica i CSS dinamicamente
+        const cssFiles = [
+            'css/style.css',
+            'css/calendar.css',
+            'css/patients.css',
+            'css/notification-bell.css'
+        ];
+        
+        cssFiles.forEach(file => {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = getPath(file);
+            document.head.appendChild(link);
+        });
     </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <div id="app">
@@ -180,7 +192,7 @@
         </nav>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script type="module" src="/gestione-pazienti/js/calendar.js"></script>
-    <script type="module" src="/gestione-pazienti/js/app.js"></script>
+    <script type="module" src="./js/calendar.js"></script>
+    <script type="module" src="./js/app.js"></script>
 </body>
 </html>
