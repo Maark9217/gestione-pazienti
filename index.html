@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#3498db">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Studio Posturologia - Gestione Pazienti</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/calendar.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/patients.css">
+    <link rel="stylesheet" href="css/notification-bell.css">
+</head>
+<body>
+    <div id="app">
+        <header class="app-header">
+            <nav class="main-nav">
+                <div class="logo">Studio Posturologia</div>
+                <div class="notification-bell-container">
+                    <div class="notification-bell">
+                        <i class="fas fa-bell"></i>
+                        <span id="notification-badge" class="notification-badge"></span>
+                        <div class="notification-dropdown"></div>
+                    </div>
+                </div>
+                <div id="user-info">
+                      
+                    <div class="doctor-info">
+                        <button class="logout-button" onclick="window.logout()">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span>Esci</span>
+                        </button>
+                    </div>
+                </div>
+            </nav>
+        </header>
+
+        <main id="main-content">
+            <!-- Il contenuto dinamico sarà inserito qui -->
+        </main>
+
+        <template id="calendario-template">
+            <div class="calendar-container">
+                <div class="calendar-header">
+                    <button id="prev-month"><i class="fas fa-chevron-left"></i></button>
+                    <h2 id="current-month"></h2>
+                    <button id="next-month"><i class="fas fa-chevron-right"></i></button>
+                </div>
+                <div class="calendar-grid">
+                    <div class="weekdays"></div>
+                    <div class="days"></div>
+                </div>
+                <div class="appointments-list">
+                    <h3>Appuntamenti del giorno</h3>
+                    <div id="daily-appointments"></div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Template per nuovo appuntamento -->
+        <template id="new-appointment-modal">
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <h2 id="modal-title">Nuovo Appuntamento</h2>
+                    <form id="appointment-form">
+                        <div class="form-group">
+                            <label>Nome e Cognome Paziente</label>
+                            <input type="text" id="patient-name" required placeholder="Nome e Cognome">
+                        </div>
+                        <div class="form-group">
+                            <label>Data e Ora</label>
+                            <input type="datetime-local" id="appointment-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Durata (minuti)</label>
+                            <select id="appointment-duration" required>
+                                <option value="30">30 min</option>
+                                <option value="60">60 min</option>
+                                <option value="90">90 min</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Note</label>
+                            <textarea id="appointment-notes" rows="4" placeholder="Inserisci eventuali note..."></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" onclick="closeAppointmentModal()">Annulla</button>
+                            <button type="submit" class="btn-primary">Salva</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </template>
+
+        
+        <!-- Template per le impostazioni -->
+        <template id="settings-template">
+            <div class="settings-container">
+                <h2>Impostazioni</h2>
+                <div class="settings-section">
+                    <h3>Orari di lavoro</h3>
+                    <form id="working-hours-form">
+                        <div class="working-hours">
+                            <div class="form-group">
+                                <label>Orario di apertura</label>
+                                <input type="time" id="start-time" name="startTime">
+                            </div>
+                            <div class="form-group">
+                                <label>Orario di chiusura</label>
+                                <input type="time" id="end-time" name="endTime">
+                            </div>
+                        </div>
+                        <div class="working-days">
+                            <label>Giorni lavorativi:</label>
+                            <div class="days-checkboxes">
+                                <label><input type="checkbox" name="workingDays" value="1"> Lunedì</label>
+                                <label><input type="checkbox" name="workingDays" value="2"> Martedì</label>
+                                <label><input type="checkbox" name="workingDays" value="3"> Mercoledì</label>
+                                <label><input type="checkbox" name="workingDays" value="4"> Giovedì</label>
+                                <label><input type="checkbox" name="workingDays" value="5"> Venerdì</label>
+                                <label><input type="checkbox" name="workingDays" value="6"> Sabato</label>
+                                <label><input type="checkbox" name="workingDays" value="0"> Domenica</label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary">Salva orari</button>
+                    </form>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Notifiche</h3>
+                    <div class="notification-settings">
+                        <label>
+                            <input type="checkbox" id="enable-notifications">
+                            Abilita notifiche appuntamenti
+                        </label>
+                        <div class="form-group">
+                            <label>Anticipo notifica (minuti)</label>
+                            <select id="notification-time">
+                                <option value="15">15 minuti</option>
+                                <option value="30">30 minuti</option>
+                                <option value="60">1 ora</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button type="button" class="btn-secondary" onclick="window.notificationManager.createTestNotifications()">
+                                Crea notifiche di test
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h3>Backup Dati</h3>
+                    <button id="export-data" class="btn-secondary">Esporta dati</button>
+                </div>
+            </div>
+        </template>
+
+        <nav class="bottom-nav">
+            <button class="nav-item" data-page="calendario">
+                <i class="icon-calendar"></i>
+                <span>Agenda</span>
+            </button>
+            <button class="nav-item" data-page="pazienti">
+                <i class="icon-users"></i>
+                <span>Pazienti</span>
+            </button>
+            <button class="nav-item" data-page="impostazioni">
+                <i class="icon-settings"></i>
+                <span>Impostazioni</span>
+            </button>
+        </nav>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script type="module" src="js/calendar.js"></script>
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

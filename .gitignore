@@ -1,0 +1,17 @@
+# File di sistema
+.DS_Store
+Thumbs.db
+
+# File di ambiente
+.env
+.env.local
+
+# Directory node (se userai npm in futuro)
+node_modules/
+
+# File di log
+*.log
+
+# Directory di IDE
+.vscode/
+.idea/

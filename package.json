@@ -1,0 +1,13 @@
+{
+  "name": "gestione-pazienti",
+  "version": "1.0.0",
+  "description": "Sistema di gestione pazienti per Studio Posturologia",
+  "main": "index.html",
+  "scripts": {
+    "start": "live-server"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "live-server": "^1.2.0"
+  }
+}
