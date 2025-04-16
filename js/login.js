@@ -1,28 +1,26 @@
+import { getPath, redirectTo } from './paths.js';
 import { supabase } from './db-config.js';
 
-async function handleLogin(email, password) {
+async function handleLogin(e) {
+    e.preventDefault();
+    
     try {
-        // Prima verifica le credenziali
-        const { data: doctor, error } = await supabase
-            .from('doctors')
-            .select('id, name')
-            .eq('email', email)
-            .single();
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
 
-        if (error || !doctor) {
-            throw new Error('Credenziali non valide');
-        }
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password
+        });
 
-        // Salva i dati del dottore nella sessione
-        window.currentDoctor = doctor;
-        sessionStorage.setItem('currentDoctor', JSON.stringify(doctor));
+        if (error) throw error;
+
         sessionStorage.setItem('authenticated', 'true');
-        
-        window.location.href = '/';
+        redirectTo('index.html');
     } catch (error) {
+        console.error('Error:', error);
         alert('Errore di accesso: ' + error.message);
     }
 }
 
-// Esponi la funzione globalmente
-window.handleLogin = handleLogin;
+document.getElementById('login-form').addEventListener('submit', handleLogin);
