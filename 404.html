@@ -1,10 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
+    <meta charset="utf-8">
+    <title>Reindirizzamento...</title>
     <script>
-        const baseUrl = '/gestione-pazienti/';
-        window.location.href = baseUrl + 'login.html';
+        const segment = location.pathname.split('/').pop();
+        location.href = '/gestione-pazienti/' + (segment || '');
     </script>
 </head>
+<body>
+    Reindirizzamento in corso...
+</body>
 </html>
