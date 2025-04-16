@@ -32,6 +32,13 @@
             cursor: pointer;
         }
     </style>
+    <script type="module">
+        import { getPath } from './js/paths.js';
+        if (sessionStorage.getItem('authenticated')) {
+            const basePath = window.location.hostname.includes('github.io') ? '/gestione-pazienti/' : '/';
+            window.location.replace(basePath);
+        }
+    </script>
 </head>
 <body>
     <div class="login-container">

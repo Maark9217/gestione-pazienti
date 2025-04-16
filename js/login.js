@@ -1,5 +1,5 @@
-import { getPath, redirectTo } from './paths.js';
 import { supabase } from './db-config.js';
+import { redirectTo, isGitHubPages } from './paths.js';
 
 async function handleLogin(e) {
     e.preventDefault();
@@ -16,7 +16,8 @@ async function handleLogin(e) {
         if (error) throw error;
 
         sessionStorage.setItem('authenticated', 'true');
-        redirectTo('index.html');
+        const redirectPath = isGitHubPages ? '/gestione-pazienti/' : '/';
+        window.location.replace(redirectPath);
     } catch (error) {
         console.error('Error:', error);
         alert('Errore di accesso: ' + error.message);

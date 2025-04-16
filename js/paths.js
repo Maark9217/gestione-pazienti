@@ -1,11 +1,12 @@
-const BASE_URL = window.location.hostname.includes('github.io') ? '/gestione-pazienti' : '';
+export const isGitHubPages = window.location.hostname.includes('github.io');
+export const BASE_PATH = isGitHubPages ? '/gestione-pazienti' : '';
 
 export function getPath(path) {
-    // Rimuovi eventuali slash iniziali e finali
-    path = path.replace(/^\/|\/$/g, '');
-    return `${BASE_URL}/${path}`.replace(/\/+/g, '/');
+    const cleanPath = path.replace(/^\/+|\/+$/g, '');
+    return `${BASE_PATH}/${cleanPath}`;
 }
 
-export function redirectTo(page) {
-    window.location.href = getPath(page);
+export function redirectTo(path) {
+    const fullPath = getPath(path);
+    window.location.replace(fullPath);
 }
