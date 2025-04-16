@@ -14,15 +14,94 @@ export class Calendar {
         window.deleteAppointment = (appointmentId) => this.deleteAppointment(appointmentId);
     }
 
+    getDayElement(date) {
+        const day = date.getDate();
+        const month = date.getMonth();
+        const year = date.getFullYear();
+        
+        return document.querySelector(`.day[data-date="${year}-${month + 1}-${day}"]`);
+    }
+
     async loadAppointments() {
         try {
-            if (!window.currentDoctor) return;
-            this.appointments = await getAppointments(window.currentDoctor.id);
-            this.updateAppointments();
+            const { data: appointments, error } = await supabase
+                .from('appointments')
+                .select('*')
+                .eq('doctor_id', window.currentDoctor.id)  // Filtra per doctor_id
+                .order('date', { ascending: true });
+
+            if (error) throw error;
+
+            this.appointments = appointments;
+            this.updateCalendarView();
         } catch (error) {
             console.error('Errore caricamento appuntamenti:', error);
-            this.appointments = [];
-            this.updateAppointments();
+            this.showNotification('Errore nel caricamento degli appuntamenti', 'error');
+        }
+    }
+
+    updateCalendarView() {
+        // Pulisci le visualizzazioni esistenti
+        document.querySelectorAll('.day').forEach(day => {
+            const appointmentsContainer = day.querySelector('.appointments');
+            if (appointmentsContainer) {
+                appointmentsContainer.innerHTML = '';
+            }
+        });
+
+        // Aggiungi gli appuntamenti al calendario
+        this.appointments.forEach(appointment => {
+            const dateObj = new Date(appointment.date);
+            const dayElement = this.getDayElement(dateObj);
+            
+            if (dayElement) {
+                const appointmentEl = document.createElement('div');
+                appointmentEl.className = 'appointment';
+                appointmentEl.dataset.id = appointment.id;
+                appointmentEl.innerHTML = `
+                    <div class="appointment-time">
+                        ${dateObj.toLocaleTimeString('it-IT', { 
+                            hour: '2-digit', 
+                            minute: '2-digit'
+                        })}
+                    </div>
+                    <div class="appointment-info">
+                        <div class="patient-name">${appointment.patient_name || 'N/D'}</div>
+                        <div class="duration">${appointment.duration} min</div>
+                    </div>
+                `;
+                
+                const appointmentsContainer = dayElement.querySelector('.appointments');
+                if (appointmentsContainer) {
+                    appointmentsContainer.appendChild(appointmentEl);
+                }
+            }
+        });
+
+        // Aggiorna la vista del giorno selezionato
+        this.updateAppointments();
+    }
+
+    addAppointmentToCalendar(appointment) {
+        const date = appointment.date;
+        const dayElement = this.getDayElement(date);
+        
+        if (!dayElement) return;
+
+        const appointmentElement = document.createElement('div');
+        appointmentElement.className = 'appointment';
+        appointmentElement.dataset.id = appointment.id;
+        appointmentElement.innerHTML = `
+            <div class="appointment-time">${date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</div>
+            <div class="appointment-info">
+                <div class="patient-name">${appointment.patientName}</div>
+                <div class="duration">${appointment.duration} min</div>
+            </div>
+        `;
+
+        const appointmentsContainer = dayElement.querySelector('.appointments');
+        if (appointmentsContainer) {
+            appointmentsContainer.appendChild(appointmentElement);
         }
     }
 
@@ -94,6 +173,80 @@ export class Calendar {
                 alert('Errore durante l\'eliminazione dell\'appuntamento');
             }
         }
+    }
+
+    async saveAppointment(appointmentData) {
+        try {
+            // Prima verifica se il paziente esiste
+            const { data: patient, error: patientError } = await supabase
+                .from('patients')
+                .select('id, name, surname')
+                .or(`name.ilike.${appointmentData.patientName.split(' ')[0]},surname.ilike.${appointmentData.patientName.split(' ')[1]}`)
+                .single();
+
+            if (patientError || !patient) {
+                this.showNotification('Paziente non trovato. Crearlo prima di aggiungere un appuntamento', 'error');
+                return;
+            }
+
+            // Crea l'appuntamento solo se il paziente esiste
+            const appointment = {
+                patient_id: patient.id,
+                date: appointmentData.date,
+                duration: appointmentData.duration,
+                notes: appointmentData.notes
+            };
+
+            const { error: appointmentError } = await supabase
+                .from('appointments')
+                .insert(appointment);
+
+            if (appointmentError) throw appointmentError;
+            
+            this.showNotification('Appuntamento salvato con successo', 'success');
+            this.loadAppointments();
+        } catch (error) {
+            console.error('Error saving appointment:', error);
+            this.showNotification('Errore durante il salvataggio dell\'appuntamento', 'error');
+        }
+    }
+
+    async handleNewAppointment(appointmentData) {
+        try {
+            const appointment = {
+                patient_name: appointmentData.patient_name,
+                date: new Date(appointmentData.date).toISOString(),
+                duration: parseInt(appointmentData.duration),
+                notes: appointmentData.notes || '',
+                created_at: new Date().toISOString(),
+                doctor_id: window.currentDoctor.id  // Aggiungi doctor_id
+            };
+
+            const { data, error } = await supabase
+                .from('appointments')
+                .insert(appointment)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Aggiorna immediatamente la vista
+            this.showNotification('Appuntamento salvato con successo', 'success');
+            this.closeAppointmentModal();
+            await this.loadAppointments();
+            this.renderCalendar();
+        } catch (error) {
+            console.error('Errore salvataggio appuntamento:', error);
+            this.showNotification('Errore nel salvataggio: ' + error.message, 'error');
+        }
+    }
+
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
     }
 
     async init() {
@@ -201,9 +354,11 @@ export class Calendar {
 
         container.innerHTML = dayAppointments.map(app => `
             <div class="appointment-card">
-                <div class="appointment-time">${new Date(app.date).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</div>
+                <div class="appointment-time">
+                    ${new Date(app.date).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}
+                </div>
                 <div class="appointment-info">
-                    <div class="appointment-patient">${app.patients.name} ${app.patients.surname}</div>
+                    <div class="appointment-patient">${app.patient_name || 'Paziente non specificato'}</div>
                     <div class="appointment-duration">${app.duration} min</div>
                     ${app.notes ? `<div class="appointment-notes">${app.notes}</div>` : ''}
                 </div>
@@ -220,6 +375,31 @@ export class Calendar {
     }
 
     attachEventListeners() {
+        // Gestione eventi touch per mobile
+        let touchStartX = 0;
+        const calendar = document.querySelector('.calendar-container');
+
+        calendar.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        }, { passive: true });
+
+        calendar.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const diff = touchStartX - touchEndX;
+
+            if (Math.abs(diff) > 50) { // Swipe minimo di 50px
+                if (diff > 0) {
+                    // Swipe sinistra - mese successivo
+                    this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+                } else {
+                    // Swipe destra - mese precedente
+                    this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+                }
+                this.renderCalendar();
+            }
+        }, { passive: true });
+
+        // Eventi esistenti per i pulsanti
         document.getElementById('prev-month').addEventListener('click', () => {
             this.currentDate.setMonth(this.currentDate.getMonth() - 1);
             this.renderCalendar();
@@ -297,33 +477,6 @@ export class Calendar {
                 notes: notes
             });
         };
-    }
-
-    async handleNewAppointment(appointmentData) {
-        try {
-            const [name, surname] = appointmentData.patient_name.split(' ');
-            
-            const patientData = {
-                name: name || appointmentData.patient_name,
-                surname: surname || '',
-                created_at: new Date().toISOString()
-            };
-
-            const patient = await addNewPatient(patientData);
-            
-            await this.addNewAppointment({
-                patient_id: patient.id,
-                date: new Date(appointmentData.date),
-                duration: parseInt(appointmentData.duration),
-                notes: appointmentData.notes
-            });
-            
-            this.closeAppointmentModal();
-            await this.loadAppointments();
-        } catch (error) {
-            console.error('Errore salvataggio appuntamento:', error);
-            alert('Errore nel salvataggio: ' + error.message);
-        }
     }
 
     setupPatientSearch() {

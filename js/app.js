@@ -123,18 +123,62 @@ window.showNewPatientModal = () => {
 }
 
 // Gestione della navigazione
+let currentPage = null;
+
 async function navigateTo(page) {
+    handleNavigation(page);
+}
+
+function handleNavigation(page) {
+    // Previeni la navigazione se stiamo già sulla pagina
+    if (currentPage === page) return;
+
+    // Salva lo stato corrente prima di navigare
+    saveCurrentState();
+
+    // Gestisci la navigazione
     switch(page) {
+        case 'pazienti':
+            if (window.patientManager) {
+                window.patientManager.renderPatientsList();
+            }
+            break;
         case 'calendario':
             loadCalendario();
             break;
-        case 'pazienti':
-            await loadPazienti();
-            break;
         case 'impostazioni':
-            await loadImpostazioni();
+            loadImpostazioni();
             break;
     }
+
+    // Aggiorna i pulsanti di navigazione
+    updateNavigationButtons(page);
+
+    // Aggiorna la pagina corrente
+    currentPage = page;
+
+    // Previeni il comportamento di default su mobile
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            const targetPage = e.currentTarget.dataset.page;
+            handleNavigation(targetPage);
+        }, { passive: false });
+    });
+}
+
+// Funzione per salvare lo stato corrente
+function saveCurrentState() {
+    if (window.currentPatient && currentPage === 'pazienti') {
+        sessionStorage.setItem('lastPatientId', window.currentPatient.id);
+    }
+}
+
+function updateNavigationButtons(page) {
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelector(`[data-page="${page}"]`).classList.add('active');
 }
 
 async function loadImpostazioni() {
@@ -147,12 +191,6 @@ async function loadImpostazioni() {
     script.type = 'module';
     script.src = 'js/settings.js';
     document.body.appendChild(script);
-
-    // Aggiorna il pulsante attivo nel menu
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    document.querySelector('[data-page="impostazioni"]').classList.add('active');
 }
 
 // Event listeners

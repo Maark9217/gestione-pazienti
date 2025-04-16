@@ -4,23 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Studio Posturologia</title>
-    <script type="module">
-        import { getPath } from './js/paths.js';  // Percorso relativo invece di assoluto
-        window.getPath = getPath;
-        
-        const cssFiles = ['css/style.css', 'css/login.css'];
-        cssFiles.forEach(file => {
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = getPath(file);
-            document.head.appendChild(link);
-        });
-    </script>
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 10px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body>
     <div class="login-container">
-        <form id="login-form" class="login-form">
-            <h1>Accesso Studio</h1>
+        <form id="login-form">
+            <h2>Accedi</h2>
             <div class="form-group">
                 <label for="email">Email</label>
                 <input type="email" id="email" required>
@@ -29,10 +45,34 @@
                 <label for="password">Password</label>
                 <input type="password" id="password" required>
             </div>
-            <button type="submit">Accedi</button>
+            <button type="submit" class="btn-login">Accedi</button>
         </form>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script type="module" src="./js/login.js"></script>  // Percorso relativo
+
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script type="module">
+        import { supabase } from './js/db-config.js';
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+                if (error) throw error;
+
+                sessionStorage.setItem('authenticated', 'true');
+                window.location.href = '/';
+            } catch (error) {
+                alert('Errore di accesso: ' + error.message);
+            }
+        });
+    </script>
 </body>
 </html>

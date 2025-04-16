@@ -1,509 +1,885 @@
-import { supabase } from './config.js';
+import { supabase } from './db-config.js';
+import { Auth } from './auth.js';
 
-export class PatientManager {
+class PatientManager {
     constructor() {
-        this.init();
+        this.currentPatient = null;
+        this.isSaving = false;
+        this.isLoading = false;
+        this.cache = new Map();
+        this.bindEvents();
     }
 
-    async init() {
-        await this.loadPatients();
+    bindEvents() {
+        document.addEventListener('click', (e) => {
+            if (e.target.matches('.nav-item[data-page="pazienti"]')) {
+                this.renderPatientsList();
+            }
+        });
+
+        // Delegazione eventi per i tab e le azioni
+        document.addEventListener('click', (e) => {
+            const target = e.target;
+
+            // Gestione tab
+            if (target.classList.contains('tab-button')) {
+                this.switchTab(target);
+            }
+
+            // Gestione azioni
+            if (target.closest('.add-diagnosis')) {
+                this.addDiagnosis(target.closest('.diagnosis-list'));
+            }
+
+            if (target.closest('.add-visit')) {
+                this.addVisit(target.closest('.visits-timeline'));
+            }
+
+            if (target.closest('.upload-doc')) {
+                this.handleDocumentUpload();
+            }
+
+            // Gestione rimozioni
+            if (target.closest('.remove-diagnosis')) {
+                target.closest('.diagnosis-item').remove();
+            }
+
+            if (target.closest('.remove-visit')) {
+                target.closest('.visit-item').remove();
+            }
+        });
+    }
+
+    async renderPatientsList() {
+        if (this.isLoading) return;
+        this.isLoading = true;
+
+        try {
+            const mainContent = document.getElementById('main-content');
+            mainContent.innerHTML = `
+                <div class="patients-container">
+                    <div class="patients-header">
+                        <h2>Lista Pazienti</h2>
+                        <button class="add-patient-btn" onclick="window.openNewPatientModal()">
+                            <i class="fas fa-plus"></i> Nuovo Paziente
+                        </button>
+                    </div>
+                    <div id="patients-list" class="patients-list"></div>
+                </div>
+            `;
+
+            const patientsList = document.getElementById('patients-list');
+            const patients = await this.loadPatients();
+
+            // Pulisci cache vecchia
+            this.cleanCache();
+
+            // Aggiungi alla cache e renderizza
+            patients.forEach(patient => {
+                this.cache.set(patient.id, patient);
+                patientsList.appendChild(this.createPatientCard(patient));
+            });
+
+        } catch (error) {
+            console.error('Error rendering patients:', error);
+            this.showNotification('Errore nel caricamento pazienti', 'error');
+        } finally {
+            this.isLoading = false;
+        }
+    }
+
+    cleanCache() {
+        const now = Date.now();
+        for (const [id, data] of this.cache.entries()) {
+            if (now - data.timestamp > 300000) { // 5 minuti
+                this.cache.delete(id);
+            }
+        }
+    }
+
+    createPatientCard(patient) {
+        const card = document.createElement('div');
+        card.className = 'patient-card';
+        
+        // Usa i nomi corretti dei campi
+        const fullName = `${patient.name || ''} ${patient.surname || ''}`.trim();
+        const age = this.calculateAge(patient.birth_date);
+        
+        card.innerHTML = `
+            <div class="patient-card-header">
+                <h3>${fullName}</h3>
+                <span class="patient-age">${age ? `${age} anni` : ''}</span>
+            </div>
+            <div class="patient-card-body">
+                <p class="patient-info">${patient.phone || 'Nessun telefono'}</p>
+                <div class="patient-actions">
+                    <button class="view-details-btn" data-patient-id="${patient.id}">
+                        <i class="fas fa-folder-open"></i> Apri Scheda
+                    </button>
+                    <button class="delete-patient-btn" data-patient-id="${patient.id}">
+                        <i class="fas fa-trash"></i> Elimina
+                    </button>
+                </div>
+            </div>
+        `;
+
+        card.querySelector('.view-details-btn').addEventListener('click', () => this.openPatientDetail(patient));
+        card.querySelector('.delete-patient-btn').addEventListener('click', () => this.deletePatient(patient.id));
+        
+        return card;
+    }
+
+    calculateAge(birthdate) {
+        if (!birthdate) return '';
+        const today = new Date();
+        const birth = new Date(birthdate);
+        let age = today.getFullYear() - birth.getFullYear();
+        const monthDiff = today.getMonth() - birth.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+            age--;
+        }
+        return age;
+    }
+
+    openPatientDetail(patient) {
+        if (!patient) return;
+
+        const mainContent = document.getElementById('main-content');
+        const template = document.getElementById('patient-detail-template');
+        
+        // Clona prima il template
+        const clone = template.content.cloneNode(true);
+        
+        // Prepara l'header con il pulsante torna alla lista
+        const headerHtml = `
+            <div class="patient-detail-header">
+                <button class="back-to-list" id="backToList">
+                    <i class="fas fa-arrow-left"></i> Torna alla lista
+                </button>
+            </div>
+        `;
+
+        // Pulisci e inserisci il contenuto
+        mainContent.innerHTML = headerHtml;
+        mainContent.appendChild(clone);
+
+        // Ora possiamo manipolare gli elementi del DOM
+        const patientName = `${patient.name || ''} ${patient.surname || ''}`.trim();
+        const patientNameEl = mainContent.querySelector('.patient-name');
+        if (patientNameEl) patientNameEl.textContent = patientName || 'Paziente senza nome';
+
+        const age = this.calculateAge(patient.birth_date);
+        const patientAgeEl = mainContent.querySelector('.patient-age');
+        if (patientAgeEl) patientAgeEl.textContent = age ? `${age} anni` : '';
+
+        // Imposta i valori dei campi
+        const fields = {
+            '#patient-birthdate': patient.birth_date || '',
+            '#patient-phone': patient.phone || '',
+            '#patient-email': patient.email || ''
+        };
+
+        Object.entries(fields).forEach(([selector, value]) => {
+            const element = mainContent.querySelector(selector);
+            if (element) element.value = value;
+        });
+
+        // Aggiungi event listener per il pulsante torna alla lista
+        const backButton = document.getElementById('backToList');
+        if (backButton) {
+            backButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.renderPatientsList();
+            });
+        }
+
+        // Salva il paziente corrente e inizializza la vista
+        this.currentPatient = patient;
+        this.initializeDetailView();
+        this.loadAnamnesi(patient.id);
+        this.loadDiagnoses(patient.id);
+    }
+
+    async loadPatientAppointments(patientId) {
+        try {
+            const { data: appointments, error } = await supabase
+                .from('appointments')
+                .select(`
+                    id,
+                    date,
+                    duration,
+                    notes,
+                    created_at,
+                    doctor_id
+                `)
+                .eq('patient_id', patientId)
+                .order('date', { ascending: false });
+
+            if (error) {
+                console.error('Query error:', error);
+                throw error;
+            }
+
+            const visitsContainer = document.querySelector('.timeline-container');
+            if (visitsContainer && appointments) {
+                visitsContainer.innerHTML = '';
+                appointments.forEach(app => {
+                    const visitHtml = `
+                        <div class="visit-item" data-id="${app.id}">
+                            <div class="visit-date">
+                                ${new Date(app.date).toLocaleDateString('it-IT', { 
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })}
+                                <span class="visit-duration">(${app.duration} min)</span>
+                            </div>
+                            <div class="visit-content">
+                                <textarea class="visit-notes" rows="3">${app.notes || ''}</textarea>
+                                <div class="visit-actions">
+                                    <button class="save-visit-btn" onclick="window.patientManager.saveVisitChanges('${app.id}')">
+                                        <i class="fas fa-save"></i> Salva
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    visitsContainer.insertAdjacentHTML('beforeend', visitHtml);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading appointments:', error);
+            this.showNotification('Errore nel caricamento degli appuntamenti', 'error');
+        }
+    }
+
+    async saveVisitChanges(appointmentId) {
+        try {
+            const visitItem = document.querySelector(`.visit-item[data-id="${appointmentId}"]`);
+            const notes = visitItem.querySelector('.visit-notes').value;
+
+            const { error } = await supabase
+                .from('appointments')
+                .update({ notes: notes })
+                .eq('id', appointmentId);
+
+            if (error) throw error;
+            this.showNotification('Appuntamento aggiornato', 'success');
+        } catch (error) {
+            console.error('Error saving appointment:', error);
+            this.showNotification('Errore durante il salvataggio', 'error');
+        }
+    }
+
+    async deleteVisit(appointmentId) {
+        if (!confirm('Sei sicuro di voler eliminare questa visita?')) return;
+
+        try {
+            const { error } = await supabase
+                .from('appointments')
+                .delete()
+                .eq('id', appointmentId);
+
+            if (error) throw error;
+            
+            document.querySelector(`.visit-item[data-id="${appointmentId}"]`).remove();
+            this.showNotification('Visita eliminata', 'success');
+        } catch (error) {
+            console.error('Error deleting visit:', error);
+            this.showNotification('Errore durante l\'eliminazione', 'error');
+        }
+    }
+
+    switchTab(tabButton) {
+        const container = tabButton.closest('.patient-detail-container');
+        const tabId = tabButton.dataset.tab;
+
+        // Rimuovi active da tutti i tab
+        container.querySelectorAll('.tab-button').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        container.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.remove('active');
+        });
+
+        // Attiva il tab selezionato
+        tabButton.classList.add('active');
+        container.querySelector(`#${tabId}`).classList.add('active');
+    }
+
+    addDiagnosis(container, diagnosis = null) {
+        const diagnosisItem = document.createElement('div');
+        diagnosisItem.className = 'diagnosis-item';
+
+        // Formatta la data nel formato locale
+        const date = diagnosis?.data ? new Date(diagnosis.data) : new Date();
+        const formattedDate = date.toLocaleDateString('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+
+        diagnosisItem.innerHTML = `
+            <div class="diagnosis-header">
+                <input type="text" class="diagnosis-title" value="${diagnosis?.titolo || ''}" placeholder="Titolo diagnosi">
+                <span class="diagnosis-date">${formattedDate}</span>
+                <button type="button" class="remove-diagnosis">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <textarea class="diagnosis-description" rows="3" placeholder="Descrizione diagnosi...">${diagnosis?.descrizione || ''}</textarea>
+        `;
+
+        const addButton = container.querySelector('.add-diagnosis');
+        container.insertBefore(diagnosisItem, addButton);
+    }
+
+    addVisit(container, visit = null) {
+        const visitItem = document.createElement('div');
+        visitItem.className = 'visit-item';
+        visitItem.innerHTML = `
+            <div class="visit-date">${visit?.date || new Date().toLocaleDateString()}</div>
+            <div class="visit-content">
+                <textarea class="visit-notes" rows="4" placeholder="Note della visita...">${visit?.notes || ''}</textarea>
+                <div class="visit-attachments">
+                    <button class="attach-file">+ Allega file</button>
+                </div>
+                <button type="button" class="remove-visit">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        const timelineContainer = container.querySelector('.timeline-container');
+        timelineContainer.insertBefore(visitItem, timelineContainer.firstChild);
+    }
+
+    async handleDocumentUpload() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
+        input.multiple = true;
+
+        input.onchange = async (e) => {
+            const files = Array.from(e.target.files);
+            for (const file of files) {
+                await this.uploadDocument(file, this.currentPatient.id);
+            }
+        };
+
+        input.click();
+    }
+
+    async uploadDocument(file, patientId) {
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${patientId}/${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('documenti')
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+
+            const { error: dbError } = await supabase
+                .from('documenti')
+                .insert({
+                    paziente_id: patientId,
+                    nome_file: fileName,
+                    tipo: file.type
+                });
+
+            if (dbError) throw dbError;
+            this.showNotification('Documento caricato con successo', 'success');
+        } catch (error) {
+            console.error('Error:', error);
+            this.showNotification('Errore durante il caricamento del documento', 'error');
+        }
+    }
+
+    async loadDocuments() {
+        if (!this.currentPatient) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('documenti')
+                .select('*')
+                .eq('paziente_id', this.currentPatient.id)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const documentsList = document.querySelector('.documents-list');
+            documentsList.innerHTML = '';
+
+            data.forEach(doc => {
+                const docElement = this.createDocumentElement(doc);
+                documentsList.appendChild(docElement);
+            });
+        } catch (error) {
+            this.showNotification('Errore nel caricamento documenti', 'error');
+            console.error('Error:', error);
+        }
+    }
+
+    createDocumentElement(doc) {
+        const docItem = document.createElement('div');
+        docItem.className = 'document-item';
+
+        const fileIcon = this.getFileIcon(doc.tipo);
+
+        docItem.innerHTML = `
+            <div class="document-content">
+                <i class="${fileIcon}"></i>
+                <span class="document-name">${doc.nome_file}</span>
+                <span class="document-date">${new Date(doc.created_at).toLocaleDateString()}</span>
+            </div>
+            <div class="document-actions">
+                <button class="remove-doc" title="Rimuovi documento">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        docItem.querySelector('.remove-doc').addEventListener('click', async () => {
+            await this.removeDocument(doc.id);
+            docItem.remove();
+        });
+
+        return docItem;
+    }
+
+    async removeDocument(docId) {
+        try {
+            const { error } = await supabase
+                .from('documenti')
+                .delete()
+                .eq('id', docId);
+
+            if (error) throw error;
+            this.showNotification('Documento rimosso', 'success');
+        } catch (error) {
+            this.showNotification('Errore durante la rimozione', 'error');
+            console.error('Error:', error);
+        }
+    }
+
+    getFileIcon(mimeType) {
+        if (mimeType.includes('pdf')) return 'fas fa-file-pdf';
+        if (mimeType.includes('image')) return 'fas fa-file-image';
+        if (mimeType.includes('word') || mimeType.includes('document')) return 'fas fa-file-word';
+        return 'fas fa-file';
     }
 
     async loadPatients() {
         try {
-            // Ottieni prima gli appuntamenti del dottore corrente
-            const { data: doctorAppointments, error: appointmentsError } = await supabase
-                .from('appointments')
-                .select('patient_id')
-                .eq('doctor_id', window.currentDoctor.id);
-
-            if (appointmentsError) throw appointmentsError;
-
-            // Crea un set di ID dei pazienti unici per questo dottore
-            const patientIds = [...new Set(doctorAppointments.map(app => app.patient_id))];
-
-            // Ottieni i dettagli dei pazienti
-            const { data: patients, error: patientsError } = await supabase
+            const { data: patients, error } = await supabase
                 .from('patients')
-                .select(`
-                    *,
-                    appointments!inner (
-                        id,
-                        date,
-                        duration,
-                        notes,
-                        doctor_id
-                    )
-                `)
-                .in('id', patientIds)
-                .eq('appointments.doctor_id', window.currentDoctor.id)
+                .select('*')
+                .eq('doctor_id', window.currentDoctor.id)  // Filtra per doctor_id
                 .order('surname');
 
-            if (patientsError) throw patientsError;
-
-            this.renderPatientsList(patients);
+            if (error) throw error;
+            return patients || [];
         } catch (error) {
-            console.error('Errore caricamento pazienti:', error);
+            console.error('Error loading patients:', error);
+            this.showNotification('Errore nel caricamento pazienti', 'error');
+            return [];
         }
     }
 
-    renderPatientsList(patients) {
-        const mainContent = document.getElementById('main-content');
-        mainContent.innerHTML = `
-            <div class="patients-section">
-                <div class="patients-header">
-                    <h1>Pazienti</h1>
-                    <button class="btn-primary" onclick="window.patientManager.showNewPatientForm()">
-                        <i class="fas fa-plus"></i> Nuovo Paziente
-                    </button>
-                </div>
-                <div class="search-box">
-                    <input type="text" id="patient-search" placeholder="Cerca paziente...">
-                </div>
-                <div class="patients-grid">
-                    ${patients.map(patient => this.renderPatientCard(patient)).join('')}
-                </div>
-            </div>
-        `;
-        this.setupSearch();
-    }
-
-    renderPatientCard(patient) {
-        const lastAppointment = patient.appointments
-            .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-            
-        return `
-            <div class="patient-card" onclick="window.patientManager.showPatientDetails('${patient.id}')">
-                <div class="patient-card-header">
-                    <h3>${patient.surname} ${patient.name}</h3>
-                </div>
-                <div class="patient-card-body">
-                    ${patient.phone ? `<p><i class="fas fa-phone"></i> ${patient.phone}</p>` : ''}
-                    ${patient.email ? `<p><i class="fas fa-envelope"></i> ${patient.email}</p>` : ''}
-                    ${lastAppointment ? `
-                        <div class="last-appointment">
-                            <p>Ultimo appuntamento:</p>
-                            <p>${new Date(lastAppointment.date).toLocaleDateString()}</p>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-    }
-
-    setupSearch() {
-        const searchInput = document.getElementById('patient-search');
-        searchInput?.addEventListener('input', async (e) => {
-            const query = e.target.value.toLowerCase();
-            if (query.length >= 2) {
-                const { data: results, error } = await supabase
-                    .from('patients')
-                    .select('*')
-                    .or(`name.ilike.%${query}%,surname.ilike.%${query}%`);
-
-                if (!error) {
-                    document.querySelector('.patients-grid').innerHTML = 
-                        results.map(patient => this.renderPatientCard(patient)).join('');
-                }
-            } else {
-                this.loadPatients();
-            }
-        });
-    }
-
-    async showPatientDetails(patientId) {
+    async savePatient(patientData) {
         try {
-            const [patientData, clinicalNotes] = await Promise.all([
-                supabase.from('patients')
-                    .select('*, appointments(*)')
-                    .eq('id', patientId)
-                    .single(),
-                supabase.from('clinical_notes')
-                    .select('*')
-                    .eq('patient_id', patientId)
-                    .order('visit_date', { ascending: false })
-            ]);
+            const data = {
+                ...patientData,
+                doctor_id: window.currentDoctor.id  // Aggiungi doctor_id
+            };
 
-            const modal = document.createElement('div');
-            modal.className = 'modal-overlay';
-            modal.innerHTML = `
-                <div class="modal-content patient-details">
-                    <h2>Dettagli Paziente</h2>
-                    <div class="patient-share-info">
-                        ${await this.getSharedDoctorsInfo(patientId)}
-                    </div>
-                    <div class="tabs">
-                        <button class="tab-btn active" data-tab="info">Info Generali</button>
-                        <button class="tab-btn" data-tab="clinical">Note Cliniche</button>
-                        <button class="tab-btn" data-tab="appointments">Appuntamenti</button>
-                    </div>
+            const { error } = await supabase
+                .from('patients')
+                .upsert(data);
 
-                    <div class="tab-content" id="info-tab">
-                        <form id="patient-form">
-                            <input type="hidden" name="patient-id" value="${patientData.data.id}">
-                            <div class="form-group">
-                                <label>Nome</label>
-                                <input type="text" name="name" value="${patientData.data.name || ''}" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Cognome</label>
-                                <input type="text" name="surname" value="${patientData.data.surname || ''}" required>
-                            </div>
-                            <div class="form-group">
-                                <label>Email</label>
-                                <input type="email" name="email" value="${patientData.data.email || ''}">
-                            </div>
-                            <div class="form-group">
-                                <label>Telefono</label>
-                                <input type="tel" name="phone" value="${patientData.data.phone || ''}">
-                            </div>
-                        </form>
-                    </div>
-
-                    <div class="tab-content hidden" id="clinical-tab">
-                        <div class="clinical-notes-header">
-                            <h3>Note Cliniche</h3>
-                            <button class="btn-primary" onclick="window.patientManager.addClinicalNote('${patientId}')">
-                                <i class="fas fa-plus"></i> Nuova Nota
-                            </button>
-                        </div>
-                        <div class="clinical-notes-list">
-                            ${this.renderClinicalNotes(clinicalNotes.data)}
-                        </div>
-                    </div>
-
-                    <div class="tab-content hidden" id="appointments-tab">
-                        <div class="appointments-history">
-                            ${this.renderAppointmentsHistory(patientData.data.appointments)}
-                        </div>
-                    </div>
-
-                    <div class="form-actions">
-                        <button type="button" class="btn-secondary" onclick="window.patientManager.closeModal()">Chiudi</button>
-                        <button type="button" class="btn-primary" onclick="window.patientManager.showSharePatientModal('${patientId}')">Condividi</button>
-                        <button type="button" class="btn-primary" onclick="window.patientManager.savePatient()">Salva Modifiche</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            this.setupTabHandlers();
+            if (error) throw error;
+            this.showNotification('Paziente salvato con successo', 'success');
+            await this.renderPatientsList();
         } catch (error) {
-            console.error('Errore caricamento dettagli paziente:', error);
+            console.error('Error:', error);
+            this.showNotification('Errore durante il salvataggio', 'error');
         }
     }
 
-    async getSharedDoctorsInfo(patientId) {
-        const { data: appointments, error } = await supabase
-            .from('appointments')
-            .select(`
-                doctor:doctor_id (
-                    id,
-                    name,
-                    surname
-                )
-            `)
-            .eq('patient_id', patientId);
-
-        if (error) throw error;
-
-        // Rimuovi duplicati basati sull'ID del dottore
-        const uniqueDoctors = [...new Map(
-            appointments.map(a => [a.doctor.id, a.doctor])
-        ).values()];
-
-        if (!uniqueDoctors?.length) return '';
-
-        return `
-            <div class="shared-doctors">
-                <h4>Medici che seguono questo paziente:</h4>
-                <ul>
-                    ${uniqueDoctors.map(d => `<li>${d.name} ${d.surname}</li>`).join('')}
-                </ul>
-            </div>
-        `;
-    }
-
-    async showSharePatientModal(patientId) {
-        const { data: doctors } = await supabase
-            .from('doctors')
-            .select('*')
-            .neq('id', window.currentDoctor.id);
-
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h3>Condividi con altro medico</h3>
-                <form id="share-patient-form">
-                    <div class="form-group">
-                        <label>Seleziona medico</label>
-                        <select name="doctor_id" required>
-                            ${doctors.map(d => `
-                                <option value="${d.id}">${d.name} ${d.surname}</option>
-                            `).join('')}
-                        </select>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn-secondary" onclick="window.patientManager.closeModal()">Annulla</button>
-                        <button type="submit" class="btn-primary">Condividi</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        document.getElementById('share-patient-form').onsubmit = async (e) => {
-            e.preventDefault();
-            const doctorId = e.target.doctor_id.value;
-            
-            try {
-                await supabase.from('appointments').insert({
-                    doctor_id: doctorId,
-                    patient_id: patientId,
-                    date: new Date().toISOString(),
-                    duration: 0,
-                    notes: 'Paziente condiviso'
+    async saveDiagnosis(diagnosisData) {
+        try {
+            const { error } = await supabase
+                .from('diagnosi')
+                .upsert({
+                    id: diagnosisData.id,
+                    paziente_id: diagnosisData.paziente_id,
+                    titolo: diagnosisData.titolo,
+                    descrizione: diagnosisData.descrizione,
+                    data: diagnosisData.data
                 });
 
-                this.closeModal();
-                await this.loadPatients();
-            } catch (error) {
-                console.error('Errore condivisione paziente:', error);
-                alert('Errore durante la condivisione del paziente');
-            }
-        };
+            if (error) throw error;
+            this.showNotification('Diagnosi salvata', 'success');
+        } catch (error) {
+            console.error('Error:', error);
+            this.showNotification('Errore durante il salvataggio della diagnosi', 'error');
+        }
     }
 
-    async addClinicalNote(patientId) {
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h3>Nuova Nota Clinica</h3>
-                <form id="clinical-note-form">
-                    <input type="hidden" name="patient_id" value="${patientId}">
-                    <div class="form-group">
-                        <label>Data Visita</label>
-                        <input type="datetime-local" name="visit_date" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Tipo Trattamento</label>
-                        <input type="text" name="treatment_type" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Note</label>
-                        <textarea name="notes" rows="4" required></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Prossimo Trattamento</label>
-                        <textarea name="next_treatment" rows="2"></textarea>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn-secondary" onclick="window.patientManager.closeModal()">Annulla</button>
-                        <button type="submit" class="btn-primary">Salva</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        this.setupClinicalNoteForm(patientId);
+    async saveVisit(visitData) {
+        try {
+            const { error } = await supabase
+                .from('visite')
+                .insert({
+                    paziente_id: visitData.paziente_id,
+                    note: visitData.note,
+                    data: visitData.data
+                });
+
+            if (error) throw error;
+            this.showNotification('Visita salvata', 'success');
+        } catch (error) {
+            console.error('Error:', error);
+            this.showNotification('Errore durante il salvataggio della visita', 'error');
+        }
     }
 
-    renderClinicalNotes(notes) {
-        if (!notes?.length) return '<p class="no-notes">Nessuna nota clinica presente</p>';
-        
-        return notes.map(note => `
-            <div class="clinical-note-card">
-                <div class="note-header">
-                    <div class="note-date">
-                        ${new Date(note.visit_date).toLocaleString('it-IT')}
-                    </div>
-                    <div class="note-treatment">${note.treatment_type}</div>
-                </div>
-                <div class="note-content">
-                    <p class="note-text">${note.notes}</p>
-                    ${note.next_treatment ? `
-                        <div class="next-treatment">
-                            <strong>Prossimo trattamento:</strong>
-                            <p>${note.next_treatment}</p>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
-    }
+    async saveDiagnosisChanges() {
+        if (!this.currentPatient) return;
 
-    renderAppointmentsHistory(appointments) {
-        if (!appointments?.length) return '<p>Nessun appuntamento precedente</p>';
-        
-        return appointments
-            .sort((a, b) => new Date(b.date) - new Date(a.date))
-            .map(app => `
-                <div class="history-item">
-                    <div class="history-date">${new Date(app.date).toLocaleDateString()} ${new Date(app.date).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}</div>
-                    <div class="history-duration">${app.duration} min</div>
-                    ${app.notes ? `<div class="history-notes">${app.notes}</div>` : ''}
-                </div>
-            `).join('');
-    }
+        const diagnoses = Array.from(document.querySelectorAll('.diagnosis-item')).map(item => {
+            // Converti la data dal formato locale a ISO
+            const localDate = item.querySelector('.diagnosis-date').textContent;
+            const [day, month, year] = localDate.split('/');
+            const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 
-    setupPatientForm() {
-        const form = document.getElementById('patient-form');
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const patientId = formData.get('patient-id');
-            
-            try {
-                await supabase
-                    .from('patients')
-                    .update({
-                        name: formData.get('name'),
-                        surname: formData.get('surname'),
-                        email: formData.get('email'),
-                        phone: formData.get('phone'),
-                        notes: formData.get('notes')
-                    })
-                    .eq('id', patientId);
+            return {
+                paziente_id: this.currentPatient.id,
+                doctor_id: window.currentDoctor.id,  // Aggiungi doctor_id
+                titolo: item.querySelector('.diagnosis-title').value,
+                descrizione: item.querySelector('.diagnosis-description').value,
+                data: isoDate
+            };
+        });
 
-                this.closeModal();
-                this.loadPatients();
-            } catch (error) {
-                console.error('Errore aggiornamento paziente:', error);
-                alert('Errore durante il salvataggio');
-            }
-        };
-    }
+        try {
+            // Prima elimina tutte le diagnosi esistenti per questo dottore
+            await supabase
+                .from('diagnosi')
+                .delete()
+                .eq('paziente_id', this.currentPatient.id)
+                .eq('doctor_id', window.currentDoctor.id);
 
-    setupClinicalNoteForm(patientId) {
-        const form = document.getElementById('clinical-note-form');
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            
-            try {
-                const { data, error } = await supabase
-                    .from('clinical_notes')
-                    .insert({
-                        patient_id: patientId,
-                        visit_date: formData.get('visit_date'),
-                        treatment_type: formData.get('treatment_type'),
-                        notes: formData.get('notes'),
-                        next_treatment: formData.get('next_treatment')
-                    })
-                    .select()
-                    .single();
+            // Poi inserisci le nuove diagnosi
+            if (diagnoses.length > 0) {
+                const { error } = await supabase
+                    .from('diagnosi')
+                    .insert(diagnoses);
 
                 if (error) throw error;
-
-                this.closeModal();
-                this.showPatientDetails(patientId);
-            } catch (error) {
-                console.error('Errore creazione nota clinica:', error);
-                alert('Errore durante il salvataggio della nota clinica');
             }
-        };
+
+            this.showNotification('Diagnosi salvate', 'success');
+        } catch (error) {
+            console.error('Error saving diagnoses:', error);
+            this.showNotification('Errore durante il salvataggio', 'error');
+        }
     }
 
-    setupTabHandlers() {
-        const tabs = document.querySelectorAll('.tab-btn');
-        const contents = document.querySelectorAll('.tab-content');
+    async loadDiagnoses(patientId) {
+        try {
+            const { data: diagnoses, error } = await supabase
+                .from('diagnosi')
+                .select('*')
+                .eq('paziente_id', patientId)
+                .eq('doctor_id', window.currentDoctor.id)  // Filtro per doctor_id
+                .order('data', { ascending: false });
 
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                tabs.forEach(t => t.classList.remove('active'));
-                contents.forEach(c => c.classList.add('hidden'));
+            if (error) throw error;
 
-                tab.classList.add('active');
-                document.getElementById(`${tab.dataset.tab}-tab`).classList.remove('hidden');
-            });
+            const diagnosisList = document.querySelector('.diagnosis-list');
+            if (diagnosisList && diagnoses) {
+                diagnoses.forEach(diagnosis => {
+                    this.addDiagnosis(diagnosisList, diagnosis);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading diagnoses:', error);
+            this.showNotification('Errore nel caricamento delle diagnosi', 'error');
+        }
+    }
+
+    async saveClinicalData() {
+        if (!this.currentPatient) return;
+
+        try {
+            const diagnoses = Array.from(document.querySelectorAll('.diagnosis-item')).map(item => ({
+                paziente_id: this.currentPatient.id,
+                doctor_id: window.currentDoctor.id,  // Aggiungi doctor_id
+                titolo: item.querySelector('.diagnosis-title').value,
+                descrizione: item.querySelector('.diagnosis-description').value,
+                data: new Date().toISOString()
+            }));
+
+            // Elimina solo le diagnosi di questo dottore
+            await supabase
+                .from('diagnosi')
+                .delete()
+                .eq('paziente_id', this.currentPatient.id)
+                .eq('doctor_id', window.currentDoctor.id);
+
+            if (diagnoses.length > 0) {
+                const { error } = await supabase
+                    .from('diagnosi')
+                    .insert(diagnoses);
+
+                if (error) throw error;
+            }
+
+            this.showNotification('Diagnosi salvate con successo', 'success');
+        } catch (error) {
+            console.error('Error:', error);
+            this.showNotification('Errore durante il salvataggio', 'error');
+        }
+    }
+
+    async loadAnamnesi(patientId) {
+        try {
+            const { data, error } = await supabase
+                .from('anamnesi')
+                .select('testo, updated_at')
+                .eq('paziente_id', patientId)
+                .eq('doctor_id', window.currentDoctor.id)
+                .order('updated_at', { ascending: false })
+                .single();
+
+            if (error && error.code !== 'PGRST116') {
+                console.error('Error loading anamnesi:', error);
+                return;
+            }
+
+            const anamnesisTextarea = document.querySelector('#anamnesis');
+            if (anamnesisTextarea) {
+                anamnesisTextarea.value = data?.testo || '';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            this.showNotification('Errore nel caricamento anamnesi', 'error');
+        }
+    }
+
+    async saveAnamnesis() {
+        if (!this.currentPatient) return;
+
+        try {
+            const anamnesiData = {
+                paziente_id: this.currentPatient.id,
+                doctor_id: window.currentDoctor.id,
+                testo: document.querySelector('#anamnesis').value,
+                updated_at: new Date().toISOString()
+            };
+
+            // Cerca un'anamnesi esistente
+            const { data: existing } = await supabase
+                .from('anamnesi')
+                .select('id')
+                .eq('paziente_id', this.currentPatient.id)
+                .eq('doctor_id', window.currentDoctor.id)
+                .single();
+
+            let error;
+            if (existing) {
+                // Aggiorna esistente
+                const { error: updateError } = await supabase
+                    .from('anamnesi')
+                    .update({ testo: anamnesiData.testo, updated_at: anamnesiData.updated_at })
+                    .eq('id', existing.id);
+                error = updateError;
+            } else {
+                // Inserisce nuova
+                const { error: insertError } = await supabase
+                    .from('anamnesi')
+                    .insert([anamnesiData]);
+                error = insertError;
+            }
+
+            if (error) throw error;
+            this.showNotification('Anamnesi salvata con successo', 'success');
+        } catch (error) {
+            console.error('Error saving anamnesi:', error);
+            this.showNotification('Errore nel salvataggio anamnesi', 'error');
+        }
+    }
+
+    initializeDetailView() {
+        // Gestione pulsanti esistenti
+        const editInfoBtn = document.querySelector('.edit-info');
+        const saveInfoBtn = document.querySelector('.save-info');
+        const saveDiagnosisBtn = document.querySelector('.save-diagnosis');
+
+        if (editInfoBtn) editInfoBtn.addEventListener('click', () => this.toggleInfoEdit(true));
+        if (saveInfoBtn) saveInfoBtn.addEventListener('click', () => this.saveInfoChanges());
+        if (saveDiagnosisBtn) saveDiagnosisBtn.addEventListener('click', () => this.saveClinicalData());
+
+        // Aggiungi auto-save per anamnesi
+        const anamnesisTextarea = document.querySelector('#anamnesis');
+        if (anamnesisTextarea) {
+            anamnesisTextarea.value = this.currentPatient.anamnesis || '';
+            anamnesisTextarea.addEventListener('blur', () => this.saveAnamnesis());
+        }
+    }
+
+    toggleInfoEdit(editable) {
+        const inputs = document.querySelectorAll('#info input');
+        inputs.forEach(input => {
+            input.disabled = !editable;
         });
+
+        const editButton = document.querySelector('.edit-info');
+        const saveButton = document.querySelector('.save-info');
+        
+        if (editButton) editButton.style.display = editable ? 'none' : 'block';
+        if (saveButton) saveButton.style.display = editable ? 'block' : 'none';
     }
 
-    showNewPatientForm() {
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h2>Nuovo Paziente</h2>
-                <form id="new-patient-form">
-                    <div class="form-group">
-                        <label>Nome</label>
-                        <input type="text" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Cognome</label>
-                        <input type="text" name="surname" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" name="email">
-                    </div>
-                    <div class="form-group">
-                        <label>Telefono</label>
-                        <input type="tel" name="phone">
-                    </div>
-                    <div class="form-group">
-                        <label>Note</label>
-                        <textarea name="notes" rows="4"></textarea>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn-secondary" onclick="window.patientManager.closeModal()">Annulla</button>
-                        <button type="submit" class="btn-primary">Salva</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.body.appendChild(modal);
+    async saveInfoChanges() {
+        if (!this.currentPatient || this.isSaving) return;
+        this.isSaving = true; // Flag per prevenire salvataggi multipli
 
-        const form = document.getElementById('new-patient-form');
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
+        try {
+            const updateData = {
+                birth_date: document.querySelector('#patient-birthdate').value,
+                phone: document.querySelector('#patient-phone').value,
+                email: document.querySelector('#patient-email').value,
+            };
+
+            const { error } = await supabase
+                .from('patients')
+                .update(updateData)
+                .eq('id', this.currentPatient.id);
+
+            if (error) throw error;
+
+            // Aggiorna i dati locali senza ricaricare la pagina
+            this.currentPatient = { ...this.currentPatient, ...updateData };
             
-            try {
-                // Crea prima il paziente
-                const { data: patient, error: patientError } = await supabase
-                    .from('patients')
-                    .insert({
-                        name: formData.get('name'),
-                        surname: formData.get('surname'),
-                        email: formData.get('email'),
-                        phone: formData.get('phone'),
-                        notes: formData.get('notes'),
-                        created_at: new Date().toISOString()
-                    })
-                    .select()
-                    .single();
-
-                if (patientError) throw patientError;
-
-                // Crea un appuntamento vuoto per associare il paziente al dottore
-                await supabase
-                    .from('appointments')
-                    .insert({
-                        doctor_id: window.currentDoctor.id,
-                        patient_id: patient.id,
-                        date: new Date().toISOString(),
-                        duration: 0,
-                        notes: 'Prima registrazione paziente'
-                    });
-
-                this.closeModal();
-                await this.loadPatients();
-                
-            } catch (error) {
-                console.error('Errore creazione paziente:', error);
-                alert('Errore durante il salvataggio del paziente');
-            }
-        };
+            // Disabilita i campi e aggiorna i pulsanti
+            this.toggleInfoEdit(false);
+            
+            this.showNotification('Informazioni salvate con successo', 'success');
+        } catch (error) {
+            console.error('Error saving patient info:', error);
+            this.showNotification('Errore durante il salvataggio', 'error');
+        } finally {
+            this.isSaving = false;
+        }
     }
 
-    closeModal() {
+    async saveAllChanges() {
+        try {
+            await this.saveInfoChanges();
+            await this.saveDiagnosisChanges();
+            await this.saveVisitsChanges();
+            this.showNotification('Modifiche salvate con successo', 'success');
+        } catch (error) {
+            this.showNotification('Errore durante il salvataggio', 'error');
+        }
+    }
+
+    async saveVisitsChanges() {
+        if (!this.currentPatient) return;
+
+        const visits = Array.from(document.querySelectorAll('.visit-item')).map(item => ({
+            paziente_id: this.currentPatient.id,
+            note: item.querySelector('.visit-notes').value,
+            data: item.querySelector('.visit-date').textContent
+        }));
+
+        try {
+            // Prima elimina tutte le visite esistenti
+            await supabase
+                .from('visite')
+                .delete()
+                .eq('paziente_id', this.currentPatient.id);
+
+            // Poi inserisci le nuove visite
+            if (visits.length > 0) {
+                const { error } = await supabase
+                    .from('visite')
+                    .insert(visits);
+
+                if (error) throw error;
+            }
+
+            this.showNotification('Visite salvate', 'success');
+        } catch (error) {
+            this.showNotification('Errore durante il salvataggio', 'error');
+            console.error('Error:', error);
+        }
+    }
+
+    async handleNewPatientSubmit(e) {
+        e.preventDefault();
+        const formData = {
+            name: document.querySelector('#patient-name').value,
+            surname: document.querySelector('#patient-surname').value,
+            birth_date: document.querySelector('#patient-birthdate').value,
+            phone: document.querySelector('#patient-phone').value,
+            doctor_id: window.currentDoctor.id
+        };
+
+        try {
+            const { error } = await supabase
+                .from('patients')
+                .insert(formData);
+
+            if (error) throw error;
+
+            this.showNotification('Paziente aggiunto con successo', 'success');
+            this.closeNewPatientModal();
+            await this.renderPatientsList();
+        } catch (error) {
+            console.error('Error:', error);
+            this.showNotification('Errore durante il salvataggio', 'error');
+        }
+    }
+
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
+    }
+
+    openNewPatientModal() {
+        const template = document.getElementById('new-patient-modal');
+        const clone = template.content.cloneNode(true);
+        document.body.appendChild(clone);
+
+        // Add form submit handler
+        const form = document.querySelector('#patient-form');
+        form.addEventListener('submit', (e) => this.handleNewPatientSubmit(e));
+    }
+
+    closeNewPatientModal() {
         const modal = document.querySelector('.modal-overlay');
-        if (modal) modal.remove();
+        if (modal) {
+            modal.remove();
+        }
     }
 }
 
-// Inizializzazione globale
-window.patientManager = new PatientManager();
+const patientManager = new PatientManager();
+export { patientManager };
+window.patientManager = patientManager;
+window.openNewPatientModal = () => patientManager.openNewPatientModal();
+window.closePatientModal = () => patientManager.closeNewPatientModal();
+window.patientManager.saveVisitChanges = patientManager.saveVisitChanges.bind(patientManager);
+window.patientManager.deleteVisit = patientManager.deleteVisit.bind(patientManager);

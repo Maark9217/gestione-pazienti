@@ -1,37 +1,22 @@
 # Studio Posturologia - Gestione Pazienti
 
-Applicazione web per la gestione dei pazienti e degli appuntamenti di uno studio di posturologia.
+Sistema di gestione pazienti e appuntamenti per studio medico.
 
-## Funzionalità
-
-- Gestione calendario e appuntamenti
-- Gestione anagrafica pazienti
+## Caratteristiche
+- Gestione multi-dottore
+- Calendario appuntamenti
+- Cartelle cliniche pazienti
+- Gestione anamnesi e diagnosi
 - Sistema di notifiche
-- Impostazioni personalizzabili
-- Backup dei dati
+- Interfaccia responsive
 
-## Tecnologie utilizzate
+## Tecnologie
+- Supabase per database e autenticazione
+- Vanilla JavaScript
+- CSS moderno
+- Design responsive
 
-- HTML5
-- CSS3
-- JavaScript
-- Supabase
-
-## Installazione
-
-1. Clona il repository
-2. Configura GitHub Pages:
-   - Branch: main
-   - Folder: / (root)
-3. Il sito sarà disponibile su: https://maark9217.github.io/gestione-pazienti/
-
-## Struttura del progetto
-
-```
-gestione-pazienti/
-├── index.html
-├── login.html
-├── css/
-├── js/
-└── README.md
-```
+## Configurazione
+1. Clonare il repository
+2. Configurare le variabili ambiente in `js/db-config.js`
+3. Deployare su hosting statico

@@ -1,17 +1,14 @@
-# File di sistema
-.DS_Store
-Thumbs.db
-
-# File di ambiente
+# Config files
 .env
 .env.local
 
-# Directory node (se userai npm in futuro)
-node_modules/
-
-# File di log
-*.log
-
-# Directory di IDE
+# IDE files
 .vscode/
 .idea/
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
