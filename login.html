@@ -75,7 +75,7 @@
                 if (error) throw error;
 
                 sessionStorage.setItem('authenticated', 'true');
-                window.location.href = '/';
+                window.location.href = basePath;
             } catch (error) {
                 alert('Errore di accesso: ' + error.message);
             }
