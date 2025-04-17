@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#3498db">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -31,7 +31,7 @@
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body>
+<body class="prevent-overscroll">
     <div id="app">
         <header class="app-header">
             <nav class="main-nav">
@@ -256,34 +256,6 @@
         <template id="settings-template">
             <div class="settings-container">
                 <h2>Impostazioni</h2>
-                <div class="settings-section">
-                    <h3>Orari di lavoro</h3>
-                    <form id="working-hours-form">
-                        <div class="working-hours">
-                            <div class="form-group">
-                                <label>Orario di apertura</label>
-                                <input type="time" id="start-time" name="startTime">
-                            </div>
-                            <div class="form-group">
-                                <label>Orario di chiusura</label>
-                                <input type="time" id="end-time" name="endTime">
-                            </div>
-                        </div>
-                        <div class="working-days">
-                            <label>Giorni lavorativi:</label>
-                            <div class="days-checkboxes">
-                                <label><input type="checkbox" name="workingDays" value="1"> Lunedì</label>
-                                <label><input type="checkbox" name="workingDays" value="2"> Martedì</label>
-                                <label><input type="checkbox" name="workingDays" value="3"> Mercoledì</label>
-                                <label><input type="checkbox" name="workingDays" value="4"> Giovedì</label>
-                                <label><input type="checkbox" name="workingDays" value="5"> Venerdì</label>
-                                <label><input type="checkbox" name="workingDays" value="6"> Sabato</label>
-                                <label><input type="checkbox" name="workingDays" value="0"> Domenica</label>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn-primary">Salva orari</button>
-                    </form>
-                </div>
 
                 <div class="settings-section">
                     <h3>Notifiche</h3>
@@ -300,17 +272,16 @@
                                 <option value="60">1 ora</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <button type="button" class="btn-secondary" onclick="window.notificationManager.createTestNotifications()">
-                                Crea notifiche di test
-                            </button>
-                        </div>
                     </div>
                 </div>
 
                 <div class="settings-section">
                     <h3>Backup Dati</h3>
-                    <button id="export-data" class="btn-secondary">Esporta dati</button>
+                    <p class="backup-info">Esporta tutti i tuoi dati in un file JSON che potrai conservare come backup.</p>
+                    <button id="export-data" class="btn-primary">
+                        <i class="fas fa-download"></i> Esporta dati
+                    </button>
+                    <div class="backup-timestamp"></div>
                 </div>
             </div>
         </template>

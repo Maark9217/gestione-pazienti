@@ -1,7 +1,7 @@
 import { supabase, getDoctorInfo } from './config.js'
 import { Calendar } from './calendar.js'
-import { TouchHandler } from './touch-handler.js';
 import { NotificationManager } from './notifications.js';
+import { MobileHandler } from './mobile-handler.js';
 
 // Rendi currentDoctor disponibile globalmente
 window.currentDoctor = null;
@@ -50,8 +50,18 @@ window.checkDoctorAccess = (doctorId) => {
 
 // Rendi logout disponibile globalmente
 window.logout = async function() {
-    await supabase.auth.signOut()
-    window.location.href = '/login.html'
+    try {
+        await supabase.auth.signOut();
+        sessionStorage.removeItem('authenticated'); // Rimuovi il flag di autenticazione
+        window.currentDoctor = null; // Resetta i dati del dottore
+        
+        // Redirect una sola volta
+        if (window.location.pathname !== '/login.html') {
+            window.location.replace('/login.html'); // Usa replace invece di href
+        }
+    } catch (error) {
+        console.error('Errore durante il logout:', error);
+    }
 }
 
 // Carica il template del calendario
@@ -156,18 +166,8 @@ function handleNavigation(page) {
 
     // Aggiorna la pagina corrente
     currentPage = page;
-
-    // Previeni il comportamento di default su mobile
-    document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            const targetPage = e.currentTarget.dataset.page;
-            handleNavigation(targetPage);
-        }, { passive: false });
-    });
 }
 
-// Funzione per salvare lo stato corrente
 function saveCurrentState() {
     if (window.currentPatient && currentPage === 'pazienti') {
         sessionStorage.setItem('lastPatientId', window.currentPatient.id);
@@ -193,6 +193,23 @@ async function loadImpostazioni() {
     document.body.appendChild(script);
 }
 
+function initializeNavigation() {
+    document.querySelector('.bottom-nav').addEventListener('click', (e) => {
+        const navItem = e.target.closest('.nav-item');
+        if (!navItem) return;
+        
+        const page = navItem.dataset.page;
+        if (page) {
+            handleNavigation(page);
+        }
+    });
+}
+
+function initializeApp() {
+    // Inizializza il gestore mobile
+    new MobileHandler();
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', async () => {
     if (await checkAuth()) {
@@ -201,7 +218,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Carica il calendario come vista predefinita
         loadCalendario()
     }
-    new TouchHandler();
 
     // Inizializza il gestore delle notifiche dopo il login
     const notificationManager = new NotificationManager();
@@ -232,6 +248,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             notification_time: parseInt(e.target.value)
         });
     });
+
+    initializeNavigation();
+    initializeApp();
 })
 
 // Eventi di navigazione

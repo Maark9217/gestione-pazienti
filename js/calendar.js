@@ -123,43 +123,108 @@ export class Calendar {
     }
 
     async editAppointment(appointmentId) {
-        const appointment = this.appointments.find(app => app.id === appointmentId);
-        if (!appointment) return;
+        try {
+            // Prima recupera l'appuntamento
+            const { data: appointment, error: appointmentError } = await supabase
+                .from('appointments')
+                .select('*')
+                .eq('id', appointmentId)
+                .single();
 
-        const template = document.getElementById('new-appointment-modal');
-        const modal = template.content.cloneNode(true);
-        document.body.appendChild(modal);
+            if (appointmentError) throw appointmentError;
+            if (!appointment) throw new Error('Appuntamento non trovato');
 
-        const form = document.getElementById('appointment-form');
-        const nameInput = document.getElementById('patient-name');
-        const dateInput = document.getElementById('appointment-date');
-        const durationInput = document.getElementById('appointment-duration');
-        const notesInput = document.getElementById('appointment-notes');
+            // Recupera i dati del paziente solo se patient_id esiste
+            let patientData = { name: '', surname: '' };
+            if (appointment.patient_id) {
+                const { data: patient, error: patientError } = await supabase
+                    .from('patients')
+                    .select('name, surname')
+                    .eq('id', appointment.patient_id)
+                    .single();
 
-        nameInput.value = `${appointment.patients.name} ${appointment.patients.surname}`;
-        nameInput.disabled = true;
-        
-        const appointmentDate = new Date(appointment.date);
-        dateInput.value = appointmentDate.toISOString().slice(0, 16);
-        durationInput.value = appointment.duration;
-        notesInput.value = appointment.notes || '';
-
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            try {
-                await updateAppointment(appointmentId, {
-                    date: new Date(dateInput.value).toISOString(),
-                    duration: parseInt(durationInput.value),
-                    notes: notesInput.value
-                });
-
-                this.closeAppointmentModal();
-                await this.loadAppointments();
-            } catch (error) {
-                console.error('Errore aggiornamento appuntamento:', error);
-                alert('Errore durante l\'aggiornamento dell\'appuntamento');
+                if (!patientError && patient) {
+                    patientData = patient;
+                }
             }
-        };
+
+            // Crea il modal di modifica
+            const modal = document.createElement('div');
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h2>Modifica Appuntamento</h2>
+                    <form id="edit-appointment-form">
+                        <div class="form-group">
+                            <label>Paziente</label>
+                            <input type="text" 
+                                   id="patient-name" 
+                                   value="${appointment.patient_name || `${patientData.name} ${patientData.surname}`.trim() || 'Paziente non specificato'}" 
+                                   ${appointment.patient_id ? 'readonly' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>Data e Ora</label>
+                            <input type="datetime-local" id="appointment-date" value="${appointment.date.slice(0, 16)}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Durata (minuti)</label>
+                            <select id="appointment-duration" required>
+                                <option value="30" ${appointment.duration === 30 ? 'selected' : ''}>30 min</option>
+                                <option value="60" ${appointment.duration === 60 ? 'selected' : ''}>60 min</option>
+                                <option value="90" ${appointment.duration === 90 ? 'selected' : ''}>90 min</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Note</label>
+                            <textarea id="appointment-notes" rows="4">${appointment.notes || ''}</textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" class="btn-secondary" onclick="calendar.closeModal()">Annulla</button>
+                            <button type="submit" class="btn-primary">Salva</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            // Gestisci il form submit
+            const form = modal.querySelector('#edit-appointment-form');
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await this.updateAppointment(appointmentId, {
+                    date: form.querySelector('#appointment-date').value,
+                    duration: parseInt(form.querySelector('#appointment-duration').value),
+                    notes: form.querySelector('#appointment-notes').value
+                });
+                this.closeModal();
+                this.loadAppointments();
+            });
+        } catch (error) {
+            console.error('Error editing appointment:', error);
+            this.showNotification('Errore durante la modifica dell\'appuntamento', 'error');
+        }
+    }
+
+    async updateAppointment(appointmentId, data) {
+        try {
+            const { error } = await supabase
+                .from('appointments')
+                .update({
+                    date: data.date,
+                    duration: data.duration,
+                    notes: data.notes
+                })
+                .eq('id', appointmentId);
+
+            if (error) throw error;
+            this.showNotification('Appuntamento aggiornato con successo', 'success');
+            await this.loadAppointments();
+        } catch (error) {
+            console.error('Error updating appointment:', error);
+            this.showNotification('Errore durante l\'aggiornamento', 'error');
+            throw error;
+        }
     }
 
     async deleteAppointment(appointmentId) {
@@ -427,36 +492,49 @@ export class Calendar {
 
         const dateInput = document.getElementById('appointment-date');
         
-        // Imposta i limiti di orario basati sulle impostazioni del dottore
+        // Rimuovi l'evento touchend che potrebbe interferire
+        dateInput.style.pointerEvents = 'auto';
+        dateInput.style.touchAction = 'auto';
+        
+        // Imposta il formato corretto per mobile
+        dateInput.setAttribute('inputmode', 'none');
+        
+        // Gestione del click/touch sull'input
+        const openDatePicker = () => {
+            try {
+                dateInput.showPicker();
+            } catch (e) {
+                // Fallback per browser che non supportano showPicker
+                dateInput.click();
+            }
+        };
+
+        dateInput.addEventListener('touchstart', openDatePicker, { passive: true });
+        dateInput.addEventListener('click', openDatePicker, { passive: true });
+
+        const today = new Date();
+        today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+        
+        // Imposta i limiti di orario
         if (window.settingsManager?.currentSettings) {
             const settings = window.settingsManager.currentSettings;
-            const today = new Date();
-            const dayOfWeek = today.getDay();
-            
-            // Controlla se oggi è un giorno lavorativo
-            if (!settings.working_days.includes(dayOfWeek)) {
-                dateInput.disabled = true;
-                alert('Seleziona un giorno lavorativo');
-                return;
-            }
-
-            // Imposta gli orari disponibili
             const [startHour, startMinute] = settings.start_time.split(':');
             const [endHour, endMinute] = settings.end_time.split(':');
             
-            const minTime = `${startHour}:${startMinute}`;
-            const maxTime = `${endHour}:${endMinute}`;
-            
-            dateInput.min = `${today.toISOString().split('T')[0]}T${minTime}`;
-            dateInput.max = `${today.toISOString().split('T')[0]}T${maxTime}`;
+            dateInput.min = `${today.toISOString().split('T')[0]}T${startHour}:${startMinute}`;
+            const maxDate = new Date();
+            maxDate.setMonth(maxDate.getMonth() + 3); // Permetti prenotazioni fino a 3 mesi in avanti
+            dateInput.max = `${maxDate.toISOString().split('T')[0]}T${endHour}:${endMinute}`;
+        } else {
+            dateInput.min = today.toISOString().slice(0, 16);
         }
 
         const form = document.getElementById('appointment-form');
         const appointmentDate = document.getElementById('appointment-date');
 
-        const today = new Date();
-        today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-        appointmentDate.min = today.toISOString().slice(0, 16);
+        const todayDate = new Date();
+        todayDate.setMinutes(todayDate.getMinutes() - todayDate.getTimezoneOffset());
+        appointmentDate.min = todayDate.toISOString().slice(0, 16);
         
         form.onsubmit = (e) => {
             e.preventDefault();
@@ -532,6 +610,11 @@ export class Calendar {
     }
 
     closeAppointmentModal() {
+        const modal = document.querySelector('.modal-overlay');
+        if (modal) modal.remove();
+    }
+
+    closeModal() {
         const modal = document.querySelector('.modal-overlay');
         if (modal) modal.remove();
     }

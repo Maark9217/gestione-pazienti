@@ -293,6 +293,37 @@ class PatientManager {
         }
     }
 
+    async deletePatient(patientId) {
+        try {
+            if (!confirm('Sei sicuro di voler eliminare questo paziente?')) {
+                return;
+            }
+
+            // Prima elimina tutti gli appuntamenti associati al paziente
+            const { error: appointmentsError } = await supabase
+                .from('appointments')
+                .delete()
+                .eq('patient_id', patientId);
+
+            if (appointmentsError) throw appointmentsError;
+
+            // Poi elimina il paziente
+            const { error: patientError } = await supabase
+                .from('patients')
+                .delete()
+                .eq('id', patientId);
+
+            if (patientError) throw patientError;
+
+            // Aggiorna la lista
+            this.loadPatients();
+            this.showNotification('Paziente eliminato con successo', 'success');
+        } catch (error) {
+            console.error('Errore eliminazione paziente:', error);
+            this.showNotification('Errore durante l\'eliminazione del paziente', 'error');
+        }
+    }
+
     switchTab(tabButton) {
         const container = tabButton.closest('.patient-detail-container');
         const tabId = tabButton.dataset.tab;

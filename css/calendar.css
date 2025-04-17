@@ -17,6 +17,8 @@
     font-size: 1.2rem;
     cursor: pointer;
     color: var(--primary-color);
+    touch-action: manipulation;
+    cursor: pointer;
 }
 
 .calendar-grid {
@@ -24,6 +26,8 @@
     gap: 1px;
     background: var(--border-color);
     border: 1px solid var(--border-color);
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: touch;
 }
 
 .weekdays {
@@ -45,6 +49,14 @@
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     background: white;
+}
+
+.days .day {
+    touch-action: manipulation;
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(0,0,0,0.1);
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .day {
