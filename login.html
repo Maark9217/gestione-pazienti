@@ -75,6 +75,7 @@
                 if (error) throw error;
 
                 sessionStorage.setItem('authenticated', 'true');
+                const basePath = window.location.hostname.includes('github.io') ? '/gestione-pazienti/' : '/';
                 window.location.href = basePath;
             } catch (error) {
                 alert('Errore di accesso: ' + error.message);
